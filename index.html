@@ -1,0 +1,371 @@
+<!--
+Crochet Shop - single-file eCommerce prototype (updated to fix syntax issues)
+How to use:
+1. Save this file as `index.html` and open in a browser.
+2. Replace product image URLs in the `products` array (inside the <script>) or place images in an `images/` folder and set the paths.
+3. This is a front-end only prototype: products, cart, and orders are stored in localStorage. For real payments/orders, integrate a backend or a payment gateway (Razorpay/Stripe).
+
+Notes on this update:
+- Fixed a SyntaxError caused by complex inline `onerror` attribute strings containing unescaped characters (e.g. `http://...` inside data URLs).
+- Instead of embedding onerror handlers inside HTML strings, JS now assigns `img.onerror` programmatically and uses a safe placeholder SVG generated with `encodeURIComponent`.
+- This makes the code robust and avoids string-escaping issues when using template literals.
+
+Features included:
+- Responsive grid of products (flowers, bows, coasters, hairbands)
+- Product detail modal with images and description
+- Add to cart, update quantities, remove items
+- Cart persistence (localStorage)
+- Category filter and search
+- Simple contact / order via DM (opens Instagram or WhatsApp link)
+- Starter CSS with soft pastel color palette and mobile-friendly layout
+
+Customize:
+- Update `brandName`, `instagramUrl`, `whatsappNumber` in the script section.
+- Add/remove products in the `products` array.
+
+Enjoy! — Designed for your handmade crochet business.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WoolWhirl — Cozy Vibes in Every Thread</title>
+  <meta name="description" content="Handmade crochet hair accessories, flowers, coasters & bows. DM to order!" />
+  <link href="h:\Screenshot 2025-10-30 192526.png" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#FFF9F7; --card:#FFFFFF; --muted:#9B9B9B; --accent:#F7C6D2; --accent-2:#CDE8D6; --accent-3:#FDE7B9; --shadow: 0 6px 18px rgba(18,18,18,0.06);
+      --radius:14px; --brand:#E27D60; --accentSoft:#F8E6EB;
+    }
+    *{box-sizing:border-box}
+    body{font-family:'Poppins',system-ui,Arial; margin:0; background:var(--bg); color:#333}
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:linear-gradient(90deg,var(--accentSoft),#fff);position:sticky;top:0;z-index:40;border-bottom:1px solid rgba(0,0,0,0.04)}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--brand),#ffd2d2);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;box-shadow:var(--shadow)}
+    .brand h1{font-size:1.05rem;margin:0}
+    nav{display:flex;gap:10px;align-items:center}
+    .btn{background:var(--card);border:1px solid rgba(0,0,0,0.06);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .hero{padding:28px 24px;display:grid;grid-template-columns:1fr;gap:18px;align-items:center}
+    .hero-grid{display:flex;gap:18px;align-items:center}
+    .hero h2{margin:0;font-size:1.6rem}
+    .search{display:flex;gap:10px;align-items:center}
+    .search input{padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);width:220px}
+    main{max-width:1100px;margin:18px auto;padding:0 18px}
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .chip{padding:8px 12px;background:var(--card);border-radius:999px;border:1px solid rgba(0,0,0,0.04);cursor:pointer}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+    .card{background:var(--card);border-radius:12px;padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;border:1px solid rgba(0,0,0,0.03)}
+    .thumb{height:160px;border-radius:10px;overflow:hidden;background:#f7f7f7;display:flex;align-items:center;justify-content:center}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .meta{display:flex;justify-content:space-between;align-items:center}
+    .meta h3{margin:0;font-size:1rem}
+    .meta small{color:var(--muted)}
+    .desc{font-size:0.92rem;color:#555}
+    footer{padding:24px;text-align:center;color:#666}
+
+    /* cart drawer */
+    .cart-btn{position:relative}
+    .badge{position:absolute;top:-6px;right:-6px;background:var(--brand);color:#fff;padding:4px 7px;border-radius:999px;font-size:0.75rem}
+    .drawer{position:fixed;right:18px;top:80px;width:340px;max-width:90%;background:var(--card);box-shadow:0 12px 32px rgba(0,0,0,0.12);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:12px;z-index:60}
+    .drawer h4{margin:0}
+    .cart-item{display:flex;gap:12px;align-items:center}
+    .cart-item img{width:56px;height:56px;border-radius:8px;object-fit:cover}
+    .qty{display:flex;gap:8px;align-items:center}
+    .qty button{width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:#fff}
+    .empty{padding:18px;text-align:center;color:var(--muted)}
+
+    /* modal */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:80}
+    .modal{background:var(--card);width:92%;max-width:720px;border-radius:14px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,0.2)}
+    .modal .media{display:flex;gap:12px}
+    .media img{width:260px;height:260px;object-fit:cover;border-radius:12px}
+    .modal .info{flex:1}
+    .cta{display:flex;gap:8px}
+    .primary{background:var(--brand);color:#fff;padding:10px 12px;border-radius:10px;border:none}
+
+    /* responsive tweaks */
+    @media(min-width:760px){.hero{grid-template-columns:1fr 360px}}
+    @media(max-width:460px){.media img{width:180px;height:180px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+     <img src="H:\Screenshot 2025-10-30 192526.png" alt="WoolWhirl Logo">
+      <div>
+        <h1>WoolWhirl</h1>
+        <small style="color:var(--muted)">Cozy Vibes in Every Thread</small>
+      </div>
+    </div>
+    <nav>
+      <div class="search">
+        <input id="search" placeholder="Search products..." />
+        <button class="btn" id="clearSearch">Clear</button>
+      </div>
+      <button class="btn cart-btn" id="toggleCart">Cart <span class="badge" id="cartCount">0</span></button>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h2>Handmade & heartmade — cozy crochet accessories</h2>
+      <p style="color:var(--muted)">Soft yarn, pretty colors, and tiny details — perfect for gifting or styling. DM to order or checkout via the cart demo.</p>
+      <div style="margin-top:12px" class="filters" id="categoryChips">
+        <button class="chip" data-cat="all">All</button>
+        <button class="chip" data-cat="hair">Hair Accessories</button>
+        <button class="chip" data-cat="flowers">Flowers</button>
+        <button class="chip" data-cat="coasters">Coasters</button>
+        <button class="chip" data-cat="bows">Bows</button>
+      </div>
+    </div>
+    <aside style="background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:14px;padding:14px;box-shadow:var(--shadow)">
+      <h3 style="margin:0">Featured</h3>
+      <p style="color:var(--muted);margin-top:6px">Best-sellers & new arrivals — handcrafted with love.</p>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="scrollToProducts()">Shop Now</button>
+        <a class="btn" href="#contact">Contact</a>
+      </div>
+    </aside>
+  </section>
+
+  <main>
+    <section id="productsSection">
+      <div class="grid" id="productGrid">
+        <!-- JS inject -->
+      </div>
+    </section>
+
+    <section id="about" style="margin-top:28px;padding:18px;background:linear-gradient(90deg,#fff,#fff);border-radius:12px">
+      <h3>About WoolWhirl</h3>
+      <p style="color:var(--muted)"><p>
+        Welcome to <strong>WoolWhirl</strong> — where every thread is spun with warmth, creativity, and care.  
+        We specialize in handmade crochet pieces like <em>coasters, hair accessories, bows, and floral crafts</em> — 
+        each made with love and an eye for cozy beauty.
+      </p>
+      <p>
+        Our mission is to bring <strong>comfort, color, and craftsmanship</strong> to your everyday life.  
+        Whether you’re decorating your space, gifting someone special, or adding a touch of handmade charm to your style,  
+        WoolWhirl has something unique for you.
+      </p>
+      <p>
+        Every creation is thoughtfully designed and made by hand — ensuring that no two pieces are ever exactly alike.  
+        That’s what makes them truly yours. 💙
+      </p>
+    </section>
+
+    <section id="contact" style="margin-top:18px;padding:18px;background:var(--card);border-radius:12px">
+      <h3>Contact & Orders</h3>
+      <p style="color:var(--muted)">Prefer to order via DM? Use the links below to message us directly.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <a id="instagramLink" class="btn" target="_blank">DM on Instagram</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <small>© Cozy Crochet — Handmade accessories • DM to order • Built with ❤️</small>
+  </footer>
+
+  <!-- cart drawer template (hidden) -->
+  <div id="cartDrawer" style="display:none" class="drawer" aria-hidden="true"></div>
+
+  <!-- modal container -->
+  <div id="modalRoot"></div>
+
+  <script>
+    /* CONFIG */
+    const brandName = 'Cozy Crochet';
+    const instagramUrl = 'https://www.instagram.com/woolw.hirl/'; // replace with your Instagram
+
+
+    document.getElementById('instagramLink').href = instagramUrl;
+
+    /* SAMPLE PRODUCTS - replace image with your own */
+    const products = [
+      {id:'p1',title:'Red Crochet Bow',category:'bows',price:150,desc:'Handmade red crochet bow with pearl center',img:'images/red-bow.jpg'},
+      {id:'p2',title:'Blue Crochet Bow',category:'bows',price:150,desc:'Soft blue wool bow with elastic band',img:'images/blue-bow.jpg'},
+      {id:'p3',title:'Peach Crochet Flower',category:'flowers',price:120,desc:'Peach floral hair tie with pearl',img:'images/peach-flower.jpg'},
+      {id:'p4',title:'Daisy Clip',category:'flowers',price:120,desc:'Cute daisy hair clip set',img:'images/daisy-clip.jpg'},
+      {id:'p5',title:'Sunflower Coaster',category:'coasters',price:180,desc:'Bright sunflower coaster for mugs',img:'images/sunflower-coaster.jpg'},
+      {id:'p6',title:'Mini Color Coasters (set of 4)',category:'coasters',price:350,desc:'Set of 4 colorful mini coasters',img:'images/mini-coasters.jpg'},
+      {id:'p7',title:'Cherry Hair Tie',category:'hair',price:110,desc:'Playful cherry crochet hair tie',img:'images/cherry-tie.jpg'},
+      {id:'p8',title:'Crochet Hairband',category:'hair',price:220,desc:'Soft cozy crochet hairband — multiple colors',img:'images/hairband.jpg'}
+    ];
+
+    /* helper: safe placeholder SVG data URL */
+    function placeholderDataURL(){
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='520' height='360'><rect width='100%' height='100%' fill='%23F6F6F7'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239B9B9B' font-size='18'>Image placeholder</text></svg>`;
+      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    }
+
+    /* state */
+    let cart = JSON.parse(localStorage.getItem('cc_cart') || '[]');
+    const productGrid = document.getElementById('productGrid');
+    const cartDrawer = document.getElementById('cartDrawer');
+
+    function saveCart(){ localStorage.setItem('cc_cart', JSON.stringify(cart)); renderCart(); updateBadge(); }
+    function updateBadge(){ document.getElementById('cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0); }
+
+    function createCardElement(p){
+      const el = document.createElement('div'); el.className = 'card';
+      el.innerHTML = `
+        <div class="thumb"><img data-src="${p.img}" alt="${p.title}"></div>
+        <div>
+          <div class="meta"><h3>${p.title}</h3><small>Category: ${p.category}</small></div>
+          <p class="desc">${p.desc}</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <div style="font-weight:600;color:var(--brand)">₹ ${p.price}</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn viewBtn">View</button>
+              <button class="btn addBtn">Add</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // set image src and safe onerror
+      const img = el.querySelector('img');
+      img.src = p.img;
+      img.onerror = function(){ this.style.objectFit = 'contain'; this.src = placeholderDataURL(); };
+
+      // attach handlers
+      el.querySelector('.viewBtn').addEventListener('click', ()=> openModal(p.id));
+      el.querySelector('.addBtn').addEventListener('click', ()=> addToCart(p.id));
+
+      return el;
+    }
+
+    function renderProducts(filter='all',searchTerm=''){
+      productGrid.innerHTML = '';
+      const list = products.filter(p=> (filter==='all' || p.category===filter) && p.title.toLowerCase().includes(searchTerm.toLowerCase()));
+      list.forEach(p=> productGrid.appendChild(createCardElement(p)));
+    }
+
+    function openModal(id){
+      const p = products.find(x=>x.id===id);
+      if(!p) return;
+      const modalRoot = document.getElementById('modalRoot');
+      modalRoot.innerHTML = '';
+
+      const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop';
+      backdrop.addEventListener('click', closeModal);
+
+      const modal = document.createElement('div'); modal.className = 'modal';
+      modal.addEventListener('click', e=> e.stopPropagation());
+
+      modal.innerHTML = `
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div class="media"><img alt="${p.title}"></div>
+          <div class="info">
+            <h3>${p.title}</h3>
+            <p style="color:var(--muted)">${p.desc}</p>
+            <p style="font-weight:700;color:var(--brand)">₹ ${p.price}</p>
+            <div style="margin-top:12px" class="cta">
+              <button class="primary addModalBtn">Add to Cart</button>
+              <button class="btn dmModalBtn">Order via DM</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // set image with safe onerror
+      const modalImg = modal.querySelector('img');
+      modalImg.src = p.img;
+      modalImg.onerror = function(){ this.style.objectFit = 'contain'; this.src = placeholderDataURL(); };
+
+      // button handlers
+      modal.querySelector('.addModalBtn').addEventListener('click', ()=>{ addToCart(p.id); closeModal(); });
+      modal.querySelector('.dmModalBtn').addEventListener('click', ()=> openDM(p.title));
+
+      backdrop.appendChild(modal);
+      modalRoot.appendChild(backdrop);
+    }
+
+    function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+
+    function addToCart(id){
+      const prod = products.find(p=>p.id===id);
+      if(!prod) return;
+      const existing = cart.find(i=>i.id===id);
+      if(existing) existing.qty++;
+      else cart.push({id:prod.id,title:prod.title,price:prod.price,img:prod.img,qty:1});
+      saveCart();
+      openCart();
+    }
+
+    function renderCart(){
+      if(cart.length===0){ cartDrawer.innerHTML = '<h4>Cart</h4><div class="empty">Your cart is empty</div>'; return }
+      cartDrawer.innerHTML = '';
+      const header = document.createElement('h4'); header.textContent = 'Cart'; cartDrawer.appendChild(header);
+
+      cart.forEach(item=>{
+        const row = document.createElement('div'); row.className = 'cart-item';
+        row.innerHTML = `
+          <img alt="${item.title}">
+          <div style="flex:1">
+            <div style="font-weight:600">${item.title}</div>
+            <div style="color:var(--muted);font-size:0.9rem">₹ ${item.price} • Qty: ${item.qty}</div>
+          </div>
+          <div class="qty">
+            <button class="minus">-</button>
+            <div style="width:28px;text-align:center">${item.qty}</div>
+            <button class="plus">+</button>
+            <button class="remove">✕</button>
+          </div>
+        `;
+        const img = row.querySelector('img'); img.src = item.img; img.onerror = function(){ this.src = placeholderDataURL(); this.style.objectFit='contain'; };
+        row.querySelector('.minus').addEventListener('click', ()=> changeQty(item.id,-1));
+        row.querySelector('.plus').addEventListener('click', ()=> changeQty(item.id,1));
+        row.querySelector('.remove').addEventListener('click', ()=> removeItem(item.id));
+        cartDrawer.appendChild(row);
+      });
+
+      const footer = document.createElement('div'); footer.style = 'border-top:1px dashed rgba(0,0,0,0.08);padding-top:8px;display:flex;justify-content:space-between;align-items:center';
+      const total = document.createElement('div'); total.style.fontWeight = '700'; total.textContent = 'Total: ₹ ' + cart.reduce((s,i)=>s+i.qty*i.price,0);
+      const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+      const checkoutBtn = document.createElement('button'); checkoutBtn.className='btn'; checkoutBtn.textContent='Checkout'; checkoutBtn.addEventListener('click', checkout);
+      const clearBtn = document.createElement('button'); clearBtn.className='btn'; clearBtn.textContent='Clear'; clearBtn.addEventListener('click', clearCart);
+      actions.appendChild(checkoutBtn); actions.appendChild(clearBtn);
+      footer.appendChild(total); footer.appendChild(actions);
+      cartDrawer.appendChild(footer);
+    }
+
+    function changeQty(id,delta){ const it = cart.find(i=>i.id===id); if(!it) return; it.qty += delta; if(it.qty<1) cart = cart.filter(x=>x.id!==id); saveCart(); }
+    function removeItem(id){ cart = cart.filter(x=>x.id!==id); saveCart(); }
+    function clearCart(){ cart = []; saveCart(); }
+
+    function openCart(){ cartDrawer.style.display = 'flex'; renderCart(); }
+    function closeCart(){ cartDrawer.style.display = 'none'; }
+
+    // simple checkout demo — prepares a message and opens DM link (instagram or whatsapp)
+    function checkout(){
+      if(cart.length===0) return alert('Your cart is empty');
+      const items = cart.map(i=>`${i.title} x ${i.qty}`).join(', ');
+      const total = cart.reduce((s,i)=>s+i.qty*i.price,0);
+      const message = `Hi! I'd like to order: ${items}. Total: ₹ ${total}.`;
+      const waLink = 'https://wa.me/' + whatsappNumber.replace(/\D/g,'') + '?text=' + encodeURIComponent(message);
+      window.open(waLink,'_blank');
+    }
+
+    function openDM(title){ const message = `Hi! I'm interested in ${title}.`; const waLink = 'https://wa.me/' + whatsappNumber.replace(/\D/g,'') + '?text=' + encodeURIComponent(message); window.open(waLink,'_blank'); }
+
+    // filters & search
+    document.getElementById('categoryChips').addEventListener('click',e=>{ if(!e.target.dataset.cat) return; renderProducts(e.target.dataset.cat, document.getElementById('search').value); });
+    document.getElementById('search').addEventListener('input',e=>{ renderProducts('all', e.target.value); });
+    document.getElementById('clearSearch').addEventListener('click',()=>{ document.getElementById('search').value=''; renderProducts('all',''); })
+
+    // cart toggle
+    document.getElementById('toggleCart').addEventListener('click',()=>{ if(cartDrawer.style.display==='flex') closeCart(); else openCart(); renderCart(); })
+
+    function scrollToProducts(){ document.getElementById('productsSection').scrollIntoView({behavior:'smooth'}); }
+
+    // initial render
+    renderProducts(); updateBadge(); renderCart();
+
+    // expose to global for inline handlers if needed
+    window.addToCart = addToCart; window.openModal = openModal; window.closeModal = closeModal; window.changeQty = changeQty; window.removeItem = removeItem; window.clearCart = clearCart; window.openCart = openCart; window.openDM = openDM; window.checkout = checkout; window.scrollToProducts = scrollToProducts;
+  </script>
+</body>
+</html>
